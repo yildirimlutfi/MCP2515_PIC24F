@@ -1,0 +1,85 @@
+sbit CanSpi_CS at RD11_bit;                                                     // Chip select line
+sbit CanSpi_Rst at RD0_bit;                                                    // Reset line
+sbit CanSpi_CS_Direction at TRISD11_bit;                                        // Direction of the Chip Select pin
+sbit CanSpi_Rst_Direction at TRISD0_bit;                                       // Direction of the Reset pin
+
+unsigned int Can_Init_Flags, Can_Send_Flags, Can_Rcv_Flags;                    // Can flags
+unsigned int Rx_Data_Len=8;                                                      // Received data length in bytes
+char RxTx_Data[8];                                                             // Can rx/tx data buffer
+char Msg_Rcvd;                                                                 // Reception flag
+unsigned long Tx_ID, Rx_ID;                                                    // Can rx and tx ID
+
+sbit spiMOSI at RD9_bit;
+sbit spiMISO at RD8_bit;
+sbit spiSCK at RD10_bit;
+sbit spiMOSIdir at TRISD9_bit;
+sbit spiMISOdir at TRISD8_bit;
+sbit spiSCKdir at TRISD10_bit;
+
+const unsigned int SJW = 1;
+const unsigned int BRP = 4;
+const unsigned int PHSEG1 = 5;
+const unsigned int PHSEG2 = 2;
+const unsigned int PROPSEG = 8;
+const unsigned int CAN_CONFIG_FLAGS ;
+
+void main() {       
+                                                        // Main Program
+  ADPCFG = 0xFFFF;
+  PORTB = 0;
+  TRISB = 0;
+  
+  spiMOSIdir = 0;
+  spiMISOdir = 1;
+  spiSCKdir = 0;
+
+  RPINR20bits.SDI1R=2;  //SPI1 SDI RP2 
+  RPOR2bits.RP4R=7;    //SPI1 SDO RP26       
+  RPOR1bits.RP3R=8;     //SPI1 SCK RP19     
+
+  Can_Init_Flags = 0;
+  Can_Send_Flags = 0;                                                          // Clear flags
+  Can_Rcv_Flags  = 0;
+
+  Can_Send_Flags = _CANSPI_TX_PRIORITY_0 &                                     // Form value to be used
+                   _CANSPI_TX_XTD_FRAME &                                      //  with CANSPI1Write
+                   _CANSPI_TX_NO_RTR_FRAME;
+
+  Can_Init_Flags = _CANSPI_CONFIG_SAMPLE_ONCE &                              // Form value to be used
+                   _CANSPI_CONFIG_PHSEG2_PRG_ON &                              //  with CANSPI1Init
+                   _CANSPI_CONFIG_XTD_MSG &
+                   _CANSPI_CONFIG_DBL_BUFFER_ON &
+                   _CANSPI_CONFIG_VALID_XTD_MSG;
+                   
+  SPI1_Init_Advanced(_SPI_MASTER,_SPI_8_BIT, _SPI_PRESCALE_SEC_2, _SPI_PRESCALE_PRI_1, _SPI_SS_ENABLE, _SPI_DATA_SAMPLE_MIDDLE, _SPI_CLK_IDLE_LOW, _SPI_IDLE_2_ACTIVE);
+
+ /*Place/Copy this part in init section*/
+  CANSPIInitialize(SJW, BRP, PHSEG1, PHSEG2, PROPSEG, Can_Init_Flags);
+  CANSPISetMask(_CANSPI_MASK_B1,-1,_CANSPI_CONFIG_XTD_MSG);                    // Set all mask1 bits to ones
+  CANSPISetMask(_CANSPI_MASK_B2,-1,_CANSPI_CONFIG_XTD_MSG);                    // Set all mask2 bits to ones
+  CANSPISetFilter(_CANSPI_FILTER_B2_F4,3,_CANSPI_CONFIG_XTD_MSG);              // Set id of filter B1_F1 to 3
+  CANSPISetOperationMode(_CANSPI_MODE_LOOP,0xFF);
+  RxTx_Data[0] = 1;                                                            // Set initial data to be sent
+  RxTx_Data[1] = 2;
+  RxTx_Data[2] = 3;
+  RxTx_Data[3] = 4;
+  RxTx_Data[4] = 5;
+  RxTx_Data[5] = 6;
+  RxTx_Data[6] = 7;
+  RxTx_Data[7] = 8;
+  Tx_ID = 0x98DB33F1;                                                              // Set transmit ID
+  Rx_ID=0x98DB33F1;                                                           // Set receive ID
+
+  CANSPIWrite(Tx_ID, RxTx_Data, 1, Can_Send_Flags);                            // Send initial message
+  
+  while(1) 
+  {
+    Msg_Rcvd = CANSPIRead(&Rx_ID , RxTx_Data , &Rx_Data_Len, &Can_Rcv_Flags);  // Receive message
+    if (Msg_Rcvd)
+    {                                           // If message received check id
+      PORTB = RxTx_Data[0];                                                    // Id correct, output data at PORTB
+      Delay_ms(10);
+      CANSPIWrite(Tx_ID, RxTx_Data, 1, Can_Send_Flags);                        // Send incremented data back
+    }
+  }
+}
