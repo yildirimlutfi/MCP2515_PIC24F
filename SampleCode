@@ -1,0 +1,90 @@
+/*
+ * Project_name:
+     Can SPI 1st node
+ * Copyright:
+     (c) Mikroelektronika, 2010.
+ * Revision History
+     20101104:
+    - Initial release;
+    - 20101104(RR);
+ * Description:
+     This is code that shows simple connection of two CAN SPI modules. This is for 1st node.
+ * Test configuration:
+     mcu:                 ac:dsPIC30F4013
+                          http://ww1.microchip.com/downloads/en/devicedoc/70138c.pdf
+
+     Dev.Board:           ac:EasydsPIC6
+                          http://www.mikroe.com/eng/products/view/434/easydspic6-development-system/
+
+     Oscillator:          XT, 10.0000 MHz with 8x PLL
+
+     Ext. Modules:        ac:CANSPI_Board
+                          http://www.mikroe.com/eng/products/view/129/canspi-board/
+
+     SW:                  mikroC PRO for dsPIC v4.10
+                          http://www.mikroe.com/en/compilers/mikroc/pro/dspic/
+
+ * NOTES:
+  - For regular functionality MCU must work on 80.0000 MHz oscillator.
+  - Connect CAN SPI Board on PortF
+  - Turn On PortB LEDs (SW12.1)
+*/
+
+
+sbit CanSpi_CS at RF0_bit;                                                     // Chip select line
+sbit CanSpi_Rst at RF1_bit;                                                    // Reset line
+sbit CanSpi_CS_Direction at TRISF0_bit;                                        // Direction of the Chip Select pin
+sbit CanSpi_Rst_Direction at TRISF1_bit;                                       // Direction of the Reset pin
+
+unsigned int Can_Init_Flags, Can_Send_Flags, Can_Rcv_Flags;                    // Can flags
+unsigned int Rx_Data_Len;                                                      // Received data length in bytes
+char RxTx_Data[8];                                                             // Can rx/tx data buffer
+char Msg_Rcvd;                                                                 // Reception flag
+unsigned long Tx_ID, Rx_ID;                                                    // Can rx and tx ID
+
+void main() {                                                                  // Main Program
+  ADPCFG = 0xFFFF;
+  PORTB = 0;
+  TRISB = 0;
+
+  Can_Init_Flags = 0;
+  Can_Send_Flags = 0;                                                          // Clear flags
+  Can_Rcv_Flags  = 0;
+
+  Can_Send_Flags = _CANSPI_TX_PRIORITY_0 &                                     // Form value to be used
+                   _CANSPI_TX_XTD_FRAME &                                      //  with CANSPI1Write
+                   _CANSPI_TX_NO_RTR_FRAME;
+
+  Can_Init_Flags = _CANSPI_CONFIG_SAMPLE_THRICE &                              // Form value to be used
+                   _CANSPI_CONFIG_PHSEG2_PRG_ON &                              //  with CANSPI1Init
+                   _CANSPI_CONFIG_XTD_MSG &
+                   _CANSPI_CONFIG_DBL_BUFFER_ON &
+                   _CANSPI_CONFIG_VALID_XTD_MSG;
+
+  SPI1_Init();                                                                 // Initialize SPI1 module
+  CANSPIInitialize(1,3,3,3,1,Can_Init_Flags);                                  // Initialize external CANSPI module
+
+  CANSPISetOperationMode(_CANSPI_MODE_CONFIG,0xFF);                            // Set CONFIGURATION mode
+
+  CANSPISetMask(_CANSPI_MASK_B1,-1,_CANSPI_CONFIG_XTD_MSG);                    // Set all mask1 bits to ones
+  CANSPISetMask(_CANSPI_MASK_B2,-1,_CANSPI_CONFIG_XTD_MSG);                    // Set all mask2 bits to ones
+  CANSPISetFilter(_CANSPI_FILTER_B2_F4,3,_CANSPI_CONFIG_XTD_MSG);              // Set id of filter B1_F1 to 3
+
+  CANSPISetOperationMode(_CANSPI_MODE_NORMAL,0xFF);                            // Set NORMAL mode
+
+  RxTx_Data[0] = 9;                                                            // Set initial data to be sent
+
+  Tx_ID = 12111;                                                               // Set transmit ID
+
+  CANSPIWrite(Tx_ID, RxTx_Data, 1, Can_Send_Flags);                            // Send initial message
+
+  while(1) {                                                                   // Endless loop
+    Msg_Rcvd = CANSPIRead(&Rx_ID , RxTx_Data , &Rx_Data_Len, &Can_Rcv_Flags);  // Receive message
+    if ((Rx_ID == 3u) && Msg_Rcvd) {                                           // If message received check id
+      PORTB = RxTx_Data[0];                                                    // Id correct, output data at PORTB
+      RxTx_Data[0]++;                                                          // Increment received data
+      Delay_ms(10);
+      CANSPIWrite(Tx_ID, RxTx_Data, 1, Can_Send_Flags);                        // Send incremented data back
+    }
+  }
+}
